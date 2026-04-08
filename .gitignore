@@ -205,3 +205,11 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+.env
+.claude/
+memory/
+PROJECT_OVERVIEW.md
+
+# Downloaded ONNX model weights (large binary files)
+models/*.onnx

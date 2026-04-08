@@ -1,0 +1,1 @@
+"""Volleyball rally clip extractor."""

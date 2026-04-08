@@ -1,0 +1,37 @@
+# clip-maker configuration
+# All values listed here are the defaults; only override what you need.
+
+[clip_maker]
+
+# ── Ball tracker ─────────────────────────────────────────────────────────────
+
+# Minimum heatmap confidence [0.0–1.0] to count as a ball detection.
+# Lower this if the ball is frequently missed; raise it to reduce false hits.
+heatmap_threshold = 0.5
+
+# ── Rally segmentation ───────────────────────────────────────────────────────
+
+# A gap in ball detections longer than this (seconds) marks a rally boundary.
+# Shorter gaps (e.g. ball briefly hidden by a player) are bridged.
+# Typical value: 1.0–2.5 s.  Raise for slow-paced games with long dead-ball
+# periods; lower if consecutive rallies are being merged.
+gap_threshold_sec = 1.5
+
+# Discard rally candidates shorter than this (seconds).
+# Catches spurious detections from hands, court markings, etc.
+min_rally_duration_sec = 3.0
+
+# Warn if a rally candidate is longer than this (seconds).
+# Does NOT discard the clip — long rallies do exist — but helps flag cases
+# where two rallies were merged due to a missed boundary.
+max_rally_duration_sec = 120.0
+
+# ── Clip extraction ──────────────────────────────────────────────────────────
+
+# Extra seconds to include before the first detected ball in a rally.
+# Captures the serve motion and toss.
+pre_padding_sec = 1.5
+
+# Extra seconds to include after the last detected ball in a rally.
+# Captures the ball hitting the floor and the immediate reaction.
+post_padding_sec = 1.5
