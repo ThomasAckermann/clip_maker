@@ -72,7 +72,7 @@ def download_model(
     if dest.exists():
         if _sha256(dest) == expected_sha256:
             return dest
-        print(f"Cached model failed integrity check — re-downloading.")
+        print("Cached model failed integrity check — re-downloading.")
         dest.unlink()
     print(f"Downloading model → {dest}")
     urllib.request.urlretrieve(url, dest)

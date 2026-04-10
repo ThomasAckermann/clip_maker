@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Annotated, Optional
 
 import typer
+import json
 from tqdm import tqdm
 
 from .extractor import extract_clips, get_video_info
@@ -253,7 +254,7 @@ def label(
             raise typer.Exit(1)
 
     # ── Step 1: ball tracking ────────────────────────────────────────────────
-    typer.echo(f"\nReading video metadata…")
+    typer.echo("\nReading video metadata…")
     fps, video_duration = get_video_info(video)
     total_frames = int(fps * video_duration)
     typer.echo(f"  {fps:.2f} fps  |  {video_duration:.1f} s  |  ~{total_frames} frames")

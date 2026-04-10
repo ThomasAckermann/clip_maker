@@ -34,7 +34,6 @@ import random
 from pathlib import Path
 
 import torch
-import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset
 from torchvision import transforms
 from PIL import Image

@@ -28,7 +28,7 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from transformers import VideoMAEForVideoClassification, VideoMAEConfig
+from transformers import VideoMAEForVideoClassification
 
 from .dataset import VNLDataset, class_weights, CLASSES
 
