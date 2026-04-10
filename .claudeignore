@@ -1,0 +1,25 @@
+# Virtual environment
+.venv/
+
+# Model weights (large binary files)
+models/*.onnx
+
+# Data and output directories
+data/
+clips/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+
+# Memory and internal Claude files
+memory/
+.claude/

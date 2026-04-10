@@ -25,6 +25,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+.DS_Store
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -210,6 +211,9 @@ __marimo__/
 .claude/
 memory/
 PROJECT_OVERVIEW.md
+clips/
+data/
+models/
 
 # Downloaded ONNX model weights (large binary files)
 models/*.onnx

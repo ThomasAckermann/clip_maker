@@ -7,7 +7,7 @@
 
 # Minimum heatmap confidence [0.0–1.0] to count as a ball detection.
 # Lower this if the ball is frequently missed; raise it to reduce false hits.
-heatmap_threshold = 0.5
+heatmap_threshold = 0.6
 
 # ── Rally segmentation ───────────────────────────────────────────────────────
 
@@ -24,14 +24,14 @@ min_rally_duration_sec = 3.0
 # Warn if a rally candidate is longer than this (seconds).
 # Does NOT discard the clip — long rallies do exist — but helps flag cases
 # where two rallies were merged due to a missed boundary.
-max_rally_duration_sec = 120.0
+max_rally_duration_sec = 60.0
 
 # ── Clip extraction ──────────────────────────────────────────────────────────
 
 # Extra seconds to include before the first detected ball in a rally.
 # Captures the serve motion and toss.
-pre_padding_sec = 1.5
+pre_padding_sec = 1.0
 
 # Extra seconds to include after the last detected ball in a rally.
 # Captures the ball hitting the floor and the immediate reaction.
-post_padding_sec = 1.5
+post_padding_sec = 1.0

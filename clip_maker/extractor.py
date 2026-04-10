@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from .segmenter import Rally
@@ -30,6 +30,7 @@ class ClipInfo:
     duration_sec: float
     start_frame: int
     end_frame: int
+    actions: list[dict] = field(default_factory=list)
 
 
 def extract_clips(
@@ -138,14 +139,16 @@ def get_video_info(video_path: Path) -> tuple[float, float]:
     if result.returncode != 0:
         raise RuntimeError(f"ffprobe failed:\n{result.stderr}")
 
-    import ast
     data = json.loads(result.stdout)
     for stream in data.get("streams", []):
         if stream.get("codec_type") == "video":
             # fps from avg_frame_rate "30000/1001" or "30/1"
             avg_fr = stream.get("avg_frame_rate", "30/1")
             num, den = avg_fr.split("/")
-            fps = float(num) / float(den)
+            den_f = float(den)
+            if den_f == 0:
+                raise RuntimeError(f"ffprobe returned invalid frame rate: {avg_fr!r}")
+            fps = float(num) / den_f
             duration = float(stream.get("duration", 0))
             return fps, duration
 

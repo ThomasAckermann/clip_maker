@@ -17,7 +17,9 @@ Model download:
 
 from __future__ import annotations
 
+import hashlib
 import urllib.request
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Generator
@@ -37,6 +39,7 @@ DEFAULT_MODEL_URL = (
     "VballNetV1_seq9_grayscale_330_h288_w512.onnx"
 )
 DEFAULT_MODEL_NAME = "VballNetV1_seq9_grayscale_330_h288_w512.onnx"
+DEFAULT_MODEL_SHA256 = "2f36bd129c51a4d8afb9a23fd4816be578c65041d463d55a81d1667735070b76"
 
 
 # ── Data types ───────────────────────────────────────────────────────────────
@@ -51,13 +54,37 @@ class Detection:
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def download_model(dest_dir: Path, url: str = DEFAULT_MODEL_URL) -> Path:
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def download_model(
+    dest_dir: Path,
+    url: str = DEFAULT_MODEL_URL,
+    expected_sha256: str = DEFAULT_MODEL_SHA256,
+) -> Path:
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / DEFAULT_MODEL_NAME
     if dest.exists():
-        return dest
+        if _sha256(dest) == expected_sha256:
+            return dest
+        print(f"Cached model failed integrity check — re-downloading.")
+        dest.unlink()
     print(f"Downloading model → {dest}")
     urllib.request.urlretrieve(url, dest)
+    actual = _sha256(dest)
+    if actual != expected_sha256:
+        dest.unlink()
+        raise RuntimeError(
+            f"Downloaded model failed SHA-256 check.\n"
+            f"  expected: {expected_sha256}\n"
+            f"  actual:   {actual}\n"
+            "Do not use this file."
+        )
     return dest
 
 
@@ -135,8 +162,8 @@ class BallTracker:
         orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-        # Circular buffer of preprocessed grayscale frames (model resolution)
-        frame_buffer: list[np.ndarray] = []
+        # Fixed-size circular buffer — only keeps the last SEQ_LEN frames.
+        frame_buffer: deque[np.ndarray] = deque(maxlen=SEQ_LEN)
         frame_idx = 0
 
         try:
@@ -152,9 +179,9 @@ class BallTracker:
 
                 # Pad with the first frame until buffer is full
                 if len(frame_buffer) < SEQ_LEN:
-                    padded = [frame_buffer[0]] * (SEQ_LEN - len(frame_buffer)) + frame_buffer
+                    padded = [frame_buffer[0]] * (SEQ_LEN - len(frame_buffer)) + list(frame_buffer)
                 else:
-                    padded = frame_buffer[-SEQ_LEN:]
+                    padded = list(frame_buffer)
 
                 # Build input tensor: (1, SEQ_LEN, H, W)
                 tensor = np.stack(padded, axis=0)[np.newaxis]  # (1, 9, 288, 512)

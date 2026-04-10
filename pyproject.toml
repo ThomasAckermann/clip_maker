@@ -21,10 +21,21 @@ dependencies = [
 gpu = [
     "onnxruntime-gpu>=1.18.0",
 ]
+train = [
+    "torch>=2.1.0",
+    "torchvision>=0.16.0",
+    "transformers>=4.40.0",
+    "Pillow>=10.0.0",
+    "peft>=0.10.0",
+]
 dev = [
     "pytest>=8.0.0",
     "ruff>=0.4.0",
     "mypy>=1.10.0",
+]
+label = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
 ]
 
 [project.scripts]
