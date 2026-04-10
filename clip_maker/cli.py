@@ -53,6 +53,7 @@ def _load_config(config_path: Path | None) -> dict:
 
 # ── Commands ─────────────────────────────────────────────────────────────────
 
+
 @app.command()
 def run(
     video: Annotated[Path, typer.Argument(help="Input video file.")],
@@ -60,16 +61,20 @@ def run(
     config: Annotated[Optional[Path], typer.Option(help="TOML config file.")] = None,
     model: Annotated[Optional[Path], typer.Option(help="Path to ONNX model file.")] = None,
     gpu: Annotated[bool, typer.Option(help="Use GPU (CUDA) for inference.")] = False,
-    checkpoint: Annotated[Optional[Path], typer.Option(
-        help="Trained VideoMAE checkpoint dir for action spotting. "
-             "If omitted, action spotting is skipped."
-    )] = None,
-    action_threshold: Annotated[float, typer.Option(
-        help="Minimum confidence for action detections (default 0.5)."
-    )] = 0.5,
-    filter_action: Annotated[Optional[str], typer.Option(
-        help="Only include rallies containing this action (e.g. 'spike')."
-    )] = None,
+    checkpoint: Annotated[
+        Optional[Path],
+        typer.Option(
+            help="Trained VideoMAE checkpoint dir for action spotting. "
+            "If omitted, action spotting is skipped."
+        ),
+    ] = None,
+    action_threshold: Annotated[
+        float, typer.Option(help="Minimum confidence for action detections (default 0.5).")
+    ] = 0.5,
+    filter_action: Annotated[
+        Optional[str],
+        typer.Option(help="Only include rallies containing this action (e.g. 'spike')."),
+    ] = None,
 ) -> None:
     """Process a video and extract one clip per detected rally."""
     if not video.exists():
@@ -84,8 +89,7 @@ def run(
         model = models_dir / DEFAULT_MODEL_NAME
         if not model.exists():
             typer.echo(
-                f"Model not found at {model}.\n"
-                "Run `clip-maker download-model` first.",
+                f"Model not found at {model}.\nRun `clip-maker download-model` first.",
                 err=True,
             )
             raise typer.Exit(1)
@@ -116,8 +120,10 @@ def run(
             pbar.update(1)
 
     detected = sum(1 for d in detections if d is not None)
-    typer.echo(f"  Ball detected in {detected}/{len(detections)} frames "
-               f"({100*detected/max(len(detections),1):.1f}%)")
+    typer.echo(
+        f"  Ball detected in {detected}/{len(detections)} frames "
+        f"({100 * detected / max(len(detections), 1):.1f}%)"
+    )
 
     # ── Step 3: rally segmentation ───────────────────────────────────────────
     typer.echo("\nDetecting rally boundaries…")
@@ -149,11 +155,14 @@ def run(
     # ── Step 5: action spotting (optional) ──────────────────────────────────
     if checkpoint is not None:
         if not checkpoint.exists():
-            typer.echo(f"Warning: checkpoint not found at {checkpoint} — skipping action spotting.",
-                       err=True)
+            typer.echo(
+                f"Warning: checkpoint not found at {checkpoint} — skipping action spotting.",
+                err=True,
+            )
         else:
             typer.echo(f"\nRunning action spotter (checkpoint: {checkpoint}) …")
             from .classifier import ActionSpotter
+
             spotter = ActionSpotter(
                 checkpoint_dir=checkpoint,
                 threshold=action_threshold,
@@ -166,16 +175,14 @@ def run(
             # Filter rallies by action if requested
             if filter_action is not None:
                 before = len(clips)
-                clips = [c for c in clips if any(
-                    a["label"] == filter_action for a in c.actions
-                )]
+                clips = [c for c in clips if any(a["label"] == filter_action for a in c.actions)]
                 typer.echo(
-                    f"\nFiltered to rallies containing '{filter_action}': "
-                    f"{len(clips)}/{before}"
+                    f"\nFiltered to rallies containing '{filter_action}': {len(clips)}/{before}"
                 )
 
             # Re-write manifest with actions (and filtered clips if applicable)
             import dataclasses
+
             manifest_path = output_dir / "manifest.json"
             manifest_path.write_text(
                 json.dumps([dataclasses.asdict(c) for c in clips], indent=2),
@@ -205,14 +212,21 @@ def _extract_frames(clip_path: Path, frames_dir: Path) -> int:
 
     frames_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
-        "ffmpeg", "-y", "-i", str(clip_path),
-        "-vf", "scale=-2:224",
-        "-q:v", "2",
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(clip_path),
+        "-vf",
+        "scale=-2:224",
+        "-q:v",
+        "2",
         str(frames_dir / "%06d.jpg"),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        raise RuntimeError(f"Frame extraction failed for {clip_path.name}:\n{result.stderr[-1000:]}")
+        raise RuntimeError(
+            f"Frame extraction failed for {clip_path.name}:\n{result.stderr[-1000:]}"
+        )
     count = len(list(frames_dir.glob("*.jpg")))
     typer.echo(f"  {count} frames → {frames_dir}")
     return count
@@ -221,12 +235,13 @@ def _extract_frames(clip_path: Path, frames_dir: Path) -> int:
 @app.command()
 def label(
     video: Annotated[Path, typer.Argument(help="Input video file.")],
-    data_dir: Annotated[Path, typer.Argument(
-        help="Output directory. Receives clips/, frames_224p/, and labels.json."
-    )],
-    output: Annotated[Optional[Path], typer.Option(
-        help="Labels JSON path (default: <data_dir>/labels.json)."
-    )] = None,
+    data_dir: Annotated[
+        Path,
+        typer.Argument(help="Output directory. Receives clips/, frames_224p/, and labels.json."),
+    ],
+    output: Annotated[
+        Optional[Path], typer.Option(help="Labels JSON path (default: <data_dir>/labels.json).")
+    ] = None,
     port: Annotated[int, typer.Option(help="Port for the labeling tool.")] = 8000,
     config: Annotated[Optional[Path], typer.Option(help="TOML config file.")] = None,
     model: Annotated[Optional[Path], typer.Option(help="Path to ONNX model file.")] = None,
@@ -237,10 +252,10 @@ def label(
         typer.echo(f"Error: video file not found: {video}", err=True)
         raise typer.Exit(1)
 
-    cfg        = _load_config(config)
-    clips_dir  = data_dir / "clips"
+    cfg = _load_config(config)
+    clips_dir = data_dir / "clips"
     frames_root = data_dir / "frames_224p"
-    output     = output or data_dir / "labels.json"
+    output = output or data_dir / "labels.json"
 
     # Resolve ONNX model
     if model is None:
@@ -272,8 +287,10 @@ def label(
             pbar.update(1)
 
     detected = sum(1 for d in detections if d is not None)
-    typer.echo(f"  Ball detected in {detected}/{len(detections)} frames "
-               f"({100*detected/max(len(detections),1):.1f}%)")
+    typer.echo(
+        f"  Ball detected in {detected}/{len(detections)} frames "
+        f"({100 * detected / max(len(detections), 1):.1f}%)"
+    )
 
     # ── Step 2: rally segmentation ───────────────────────────────────────────
     typer.echo("\nDetecting rally boundaries…")
@@ -318,12 +335,18 @@ def label(
     typer.echo("  Press Ctrl+C to stop.\n")
 
     labeler = Path(__file__).parent.parent / "tools" / "labeler.py"
-    subprocess.run([
-        sys.executable, str(labeler),
-        "--clips-dir", str(clips_dir),
-        "--output", str(output),
-        "--port", str(port),
-    ])
+    subprocess.run(
+        [
+            sys.executable,
+            str(labeler),
+            "--clips-dir",
+            str(clips_dir),
+            "--output",
+            str(output),
+            "--port",
+            str(port),
+        ]
+    )
 
 
 @app.command("download-model")

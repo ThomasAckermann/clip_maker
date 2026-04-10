@@ -89,6 +89,7 @@ def detect_rallies(
 
         if duration > max_frames:
             import warnings
+
             warnings.warn(
                 f"Rally at frames {start}–{end} is {rally.duration_sec(fps):.1f} s "
                 f"(> max {max_duration_sec} s). Check for a missed boundary.",

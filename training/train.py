@@ -34,39 +34,67 @@ from .dataset import VNLDataset, class_weights, CLASSES
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Fine-tune VideoMAE on VNL volleyball data")
-    p.add_argument("--data-dir",    type=Path, default=Path("data"))
-    p.add_argument("--output-dir",  type=Path, default=Path("models/videomae-vnl"))
-    p.add_argument("--epochs",      type=int,  default=10)
-    p.add_argument("--batch-size",  type=int,  default=8)
-    p.add_argument("--lr",          type=float, default=1e-4)
-    p.add_argument("--num-workers", type=int,  default=4)
-    p.add_argument("--no-amp",      action="store_true", help="Disable mixed-precision (AMP)")
-    p.add_argument("--model-id",    type=str,  default="MCG-NJU/videomae-base",
-                   help="HuggingFace model ID to fine-tune from")
-    p.add_argument("--grad-accum",  type=int,  default=1,
-                   help="Gradient accumulation steps. Use to simulate a larger batch "
-                        "with less VRAM (e.g. --batch-size 1 --grad-accum 8).")
+    p.add_argument("--data-dir", type=Path, default=Path("data"))
+    p.add_argument("--output-dir", type=Path, default=Path("models/videomae-vnl"))
+    p.add_argument("--epochs", type=int, default=10)
+    p.add_argument("--batch-size", type=int, default=8)
+    p.add_argument("--lr", type=float, default=1e-4)
+    p.add_argument("--num-workers", type=int, default=4)
+    p.add_argument("--no-amp", action="store_true", help="Disable mixed-precision (AMP)")
+    p.add_argument(
+        "--model-id",
+        type=str,
+        default="MCG-NJU/videomae-base",
+        help="HuggingFace model ID to fine-tune from",
+    )
+    p.add_argument(
+        "--grad-accum",
+        type=int,
+        default=1,
+        help="Gradient accumulation steps. Use to simulate a larger batch "
+        "with less VRAM (e.g. --batch-size 1 --grad-accum 8).",
+    )
     # Adapter fine-tuning
-    p.add_argument("--adapter", type=str, choices=["none", "lora", "ia3"], default="none",
-                   help="Adapter fine-tuning mode. 'none' = full fine-tune (default).")
-    p.add_argument("--lora-r",            type=int,   default=16,
-                   help="LoRA rank (default 16). Higher = more capacity.")
-    p.add_argument("--lora-alpha",        type=int,   default=32,
-                   help="LoRA alpha scaling. Effective scale = alpha/r (default 32).")
-    p.add_argument("--lora-dropout",      type=float, default=0.05,
-                   help="Dropout on LoRA layers (default 0.05).")
-    p.add_argument("--lora-target-modules", type=str, nargs="+",
-                   default=["query", "value"],
-                   help="Linear modules to inject LoRA into (default: query value).")
-    p.add_argument("--merge-adapter",     action="store_true",
-                   help="After training, merge adapter weights into base model and save "
-                        "a standalone checkpoint (no PEFT needed at inference).")
+    p.add_argument(
+        "--adapter",
+        type=str,
+        choices=["none", "lora", "ia3"],
+        default="none",
+        help="Adapter fine-tuning mode. 'none' = full fine-tune (default).",
+    )
+    p.add_argument(
+        "--lora-r", type=int, default=16, help="LoRA rank (default 16). Higher = more capacity."
+    )
+    p.add_argument(
+        "--lora-alpha",
+        type=int,
+        default=32,
+        help="LoRA alpha scaling. Effective scale = alpha/r (default 32).",
+    )
+    p.add_argument(
+        "--lora-dropout", type=float, default=0.05, help="Dropout on LoRA layers (default 0.05)."
+    )
+    p.add_argument(
+        "--lora-target-modules",
+        type=str,
+        nargs="+",
+        default=["query", "value"],
+        help="Linear modules to inject LoRA into (default: query value).",
+    )
+    p.add_argument(
+        "--merge-adapter",
+        action="store_true",
+        help="After training, merge adapter weights into base model and save "
+        "a standalone checkpoint (no PEFT needed at inference).",
+    )
     return p.parse_args()
 
 
 # ── Model ─────────────────────────────────────────────────────────────────────
+
 
 def print_trainable_parameters(model: nn.Module) -> None:
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -89,7 +117,7 @@ def build_model(
     model = VideoMAEForVideoClassification.from_pretrained(
         model_id,
         num_labels=num_classes,
-        ignore_mismatched_sizes=True,   # head size changes
+        ignore_mismatched_sizes=True,  # head size changes
         label2id={c: i for i, c in enumerate(CLASSES)},
         id2label={i: c for i, c in enumerate(CLASSES)},
     )
@@ -167,6 +195,7 @@ def save_checkpoint(
 
 
 # ── Training loop ─────────────────────────────────────────────────────────────
+
 
 def train_one_epoch(
     model: nn.Module,
@@ -267,6 +296,7 @@ def evaluate(
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+
 def main() -> None:
     args = parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -291,7 +321,7 @@ def main() -> None:
     # ── Datasets & loaders ───────────────────────────────────────────────────
     frames_root = args.data_dir / "frames_224p"
     train_ds = VNLDataset(args.data_dir / "train.json", frames_root, augment=True)
-    val_ds   = VNLDataset(args.data_dir / "val.json",   frames_root, augment=False)
+    val_ds = VNLDataset(args.data_dir / "val.json", frames_root, augment=False)
 
     train_loader = DataLoader(
         train_ds,
@@ -336,7 +366,12 @@ def main() -> None:
 
     for epoch in range(1, args.epochs + 1):
         train_loss, train_acc = train_one_epoch(
-            model, train_loader, optimizer, criterion, device, scaler,
+            model,
+            train_loader,
+            optimizer,
+            criterion,
+            device,
+            scaler,
             grad_accum_steps=args.grad_accum,
             epoch=epoch,
             total_epochs=args.epochs,
@@ -347,10 +382,10 @@ def main() -> None:
         row = {
             "epoch": epoch,
             "train_loss": round(train_loss, 4),
-            "train_acc":  round(train_acc,  4),
-            "val_loss":   round(val_loss,   4),
-            "val_acc":    round(val_acc,    4),
-            "lr":         round(scheduler.get_last_lr()[0], 6),
+            "train_acc": round(train_acc, 4),
+            "val_loss": round(val_loss, 4),
+            "val_acc": round(val_acc, 4),
+            "lr": round(scheduler.get_last_lr()[0], 6),
         }
         history.append(row)
 

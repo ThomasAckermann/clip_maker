@@ -44,6 +44,7 @@ DEFAULT_MODEL_SHA256 = "2f36bd129c51a4d8afb9a23fd4816be578c65041d463d55a81d16677
 
 # ── Data types ───────────────────────────────────────────────────────────────
 
+
 @dataclass
 class Detection:
     frame_idx: int
@@ -53,6 +54,7 @@ class Detection:
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
 
 def _sha256(path: Path) -> str:
     h = hashlib.sha256()
@@ -128,6 +130,7 @@ def _heatmap_to_detection(
 
 # ── Main tracker class ───────────────────────────────────────────────────────
 
+
 class BallTracker:
     """
     Runs the ONNX ball-tracking model over a video and yields one
@@ -148,9 +151,7 @@ class BallTracker:
         self._input_name = self._session.get_inputs()[0].name
         self._threshold = heatmap_threshold
 
-    def track(
-        self, video_path: Path
-    ) -> Generator[Detection | None, None, None]:
+    def track(self, video_path: Path) -> Generator[Detection | None, None, None]:
         """
         Yields Detection | None for every frame in the video.
         Caller is responsible for progress display if desired.
@@ -188,9 +189,7 @@ class BallTracker:
                 heatmap = self._session.run(None, {self._input_name: tensor})[0]
                 heatmap = heatmap[0, 0]  # (288, 512)
 
-                yield _heatmap_to_detection(
-                    heatmap, frame_idx, orig_w, orig_h, self._threshold
-                )
+                yield _heatmap_to_detection(heatmap, frame_idx, orig_w, orig_h, self._threshold)
                 frame_idx += 1
         finally:
             cap.release()

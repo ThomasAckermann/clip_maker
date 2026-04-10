@@ -35,17 +35,20 @@ from torchvision import transforms
 CLASSES: list[str] = ["background", "block", "receive", "score", "serve", "set", "spike"]
 CLIP_LEN: int = 16
 _MEAN = [0.485, 0.456, 0.406]
-_STD  = [0.229, 0.224, 0.225]
+_STD = [0.229, 0.224, 0.225]
 
 # Inference transform — no augmentation, matches the val transform in dataset.py
-_TRANSFORM = transforms.Compose([
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=_MEAN, std=_STD),
-])
+_TRANSFORM = transforms.Compose(
+    [
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=_MEAN, std=_STD),
+    ]
+)
 
 
 # ── Data types ────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class ActionEvent:
@@ -56,14 +59,15 @@ class ActionEvent:
 
     def to_dict(self) -> dict:
         return {
-            "frame":      self.frame,
-            "sec":        self.sec,
-            "label":      self.label,
+            "frame": self.frame,
+            "sec": self.sec,
+            "label": self.label,
             "confidence": self.confidence,
         }
 
 
 # ── Main class ────────────────────────────────────────────────────────────────
+
 
 class ActionSpotter:
     """
@@ -110,11 +114,11 @@ class ActionSpotter:
         if not cap.isOpened():
             raise RuntimeError(f"Cannot open video: {video_path}")
 
-        fps        = cap.get(cv2.CAP_PROP_FPS) or 25.0
-        total      = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         frame_buf: deque[torch.Tensor] = deque(maxlen=CLIP_LEN)
         raw: list[dict] = []
-        frame_idx  = 0
+        frame_idx = 0
 
         print(f"  Spotting actions ({total} frames, stride={self.stride}) …")
 
@@ -130,11 +134,13 @@ class ActionSpotter:
                     label, conf = self._infer(frame_buf)
                     if label != "background" and conf >= self.threshold:
                         # Center frame of the window is the event frame
-                        raw.append({
-                            "frame": max(0, frame_idx - CLIP_LEN // 2),
-                            "label": label,
-                            "confidence": conf,
-                        })
+                        raw.append(
+                            {
+                                "frame": max(0, frame_idx - CLIP_LEN // 2),
+                                "label": label,
+                                "confidence": conf,
+                            }
+                        )
 
                 frame_idx += 1
         finally:
@@ -143,8 +149,10 @@ class ActionSpotter:
         events = _nms(raw, radius=self.nms_radius)
         print(f"  Found {len(events)} action(s)" + (":" if events else ""))
         for e in events:
-            print(f"    {e['label']:10s}  frame {e['frame']:5d}  "
-                  f"{e['frame'] / fps:6.2f}s  conf {e['confidence']:.2f}")
+            print(
+                f"    {e['label']:10s}  frame {e['frame']:5d}  "
+                f"{e['frame'] / fps:6.2f}s  conf {e['confidence']:.2f}"
+            )
 
         return [
             ActionEvent(
@@ -162,8 +170,8 @@ class ActionSpotter:
         # Stack to (16, 3, 224, 224) then add batch dim → (1, 16, 3, 224, 224)
         pixel_values = torch.stack(list(frame_buf)).unsqueeze(0).to(self.device)
         logits = self.model(pixel_values=pixel_values).logits[0]
-        probs  = torch.softmax(logits, dim=-1)
-        idx    = int(probs.argmax())
+        probs = torch.softmax(logits, dim=-1)
+        idx = int(probs.argmax())
         return CLASSES[idx], float(probs[idx])
 
     # ── Model loading ─────────────────────────────────────────────────────────
@@ -200,6 +208,7 @@ class ActionSpotter:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _auto_device() -> torch.device:
     if torch.cuda.is_available():
@@ -243,9 +252,6 @@ def _nms(detections: list[dict], radius: int = 16) -> list[dict]:
         while remaining:
             best = remaining[0]
             result.append(best)
-            remaining = [
-                d for d in remaining[1:]
-                if abs(d["frame"] - best["frame"]) > radius
-            ]
+            remaining = [d for d in remaining[1:] if abs(d["frame"] - best["frame"]) > radius]
 
     return sorted(result, key=lambda d: d["frame"])

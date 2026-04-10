@@ -34,23 +34,28 @@ CLASSES = ["background", "block", "receive", "score", "serve", "set", "spike"]
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Browser-based video event labeler")
     group = p.add_mutually_exclusive_group(required=True)
-    group.add_argument("--video",     type=Path, help="Single input video file.")
+    group.add_argument("--video", type=Path, help="Single input video file.")
     group.add_argument("--clips-dir", type=Path, help="Directory of MP4 clips to label.")
-    p.add_argument("--output", type=Path, default=Path("labels.json"),
-                   help="Output JSON file (default: labels.json).")
+    p.add_argument(
+        "--output",
+        type=Path,
+        default=Path("labels.json"),
+        help="Output JSON file (default: labels.json).",
+    )
     p.add_argument("--port", type=int, default=8000)
     return p.parse_args()
 
 
 # ── Video metadata ────────────────────────────────────────────────────────────
 
+
 def get_video_info(video_path: Path) -> tuple[float, float]:
     """Return (fps, duration_sec) via ffprobe."""
-    cmd = ["ffprobe", "-v", "quiet", "-print_format", "json",
-           "-show_streams", str(video_path)]
+    cmd = ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_streams", str(video_path)]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"ffprobe failed:\n{result.stderr}")
@@ -68,11 +73,12 @@ def get_video_info(video_path: Path) -> tuple[float, float]:
 
 # ── State ─────────────────────────────────────────────────────────────────────
 
+
 class _State:
     """Mutable server-side state for the active clip and clip list."""
 
     def __init__(self, clips: list[tuple[str, Path]], output_path: Path) -> None:
-        self.clips = clips                         # [(name, path), …]
+        self.clips = clips  # [(name, path), …]
         self.output_path = output_path
         self._idx = 0
         self._meta: dict[str, tuple[float, float, int]] = {}  # (fps, duration, num_frames)
@@ -80,11 +86,16 @@ class _State:
     # ── Active clip ───────────────────────────────────────────────────────────
 
     @property
-    def name(self) -> str:  return self.clips[self._idx][0]
+    def name(self) -> str:
+        return self.clips[self._idx][0]
+
     @property
-    def path(self) -> Path: return self.clips[self._idx][1]
+    def path(self) -> Path:
+        return self.clips[self._idx][1]
+
     @property
-    def idx(self) -> int:   return self._idx
+    def idx(self) -> int:
+        return self._idx
 
     def switch_to(self, name: str) -> bool:
         for i, (n, _) in enumerate(self.clips):
@@ -114,8 +125,7 @@ class _State:
             for entry in json.loads(self.output_path.read_text()):
                 if entry.get("video") == n:
                     return [
-                        {"frame": e["frame"], "label": e["label"],
-                         "x": e["xy"][0], "y": e["xy"][1]}
+                        {"frame": e["frame"], "label": e["label"], "x": e["xy"][0], "y": e["xy"][1]}
                         for e in entry.get("events", [])
                     ]
         except (json.JSONDecodeError, ValueError, KeyError):
@@ -132,16 +142,20 @@ class _State:
             "num_frames": num_frames,
             "fps": fps,
             "events": [
-                {"frame": e["frame"], "label": e["label"],
-                 "xy": [round(e["x"], 4), round(e["y"], 4)]}
+                {
+                    "frame": e["frame"],
+                    "label": e["label"],
+                    "xy": [round(e["x"], 4), round(e["y"], 4)],
+                }
                 for e in events
             ],
         }
         existing: list = []
         if self.output_path.exists():
             try:
-                existing = [e for e in json.loads(self.output_path.read_text())
-                            if e.get("video") != name]
+                existing = [
+                    e for e in json.loads(self.output_path.read_text()) if e.get("video") != name
+                ]
             except (json.JSONDecodeError, ValueError):
                 pass
         existing.append(entry)
@@ -149,6 +163,7 @@ class _State:
 
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
+
 
 def make_app(clips: list[tuple[str, Path]], output_path: Path) -> FastAPI:
     state = _State(clips, output_path)
@@ -164,12 +179,14 @@ def make_app(clips: list[tuple[str, Path]], output_path: Path) -> FastAPI:
         result = []
         for name, _ in state.clips:
             fps, dur, _ = state.meta(name)
-            result.append({
-                "name":    name,
-                "labeled": state.is_labeled(name),
-                "duration": round(dur, 1),
-                "active":  name == state.name,
-            })
+            result.append(
+                {
+                    "name": name,
+                    "labeled": state.is_labeled(name),
+                    "duration": round(dur, 1),
+                    "active": name == state.name,
+                }
+            )
         return result
 
     @app.post("/switch/{name}")
@@ -178,13 +195,13 @@ def make_app(clips: list[tuple[str, Path]], output_path: Path) -> FastAPI:
             return JSONResponse({"error": f"Unknown clip: {name}"}, status_code=404)
         fps, duration, num_frames = state.meta()
         return {
-            "name":       state.name,
-            "fps":        fps,
-            "duration":   duration,
+            "name": state.name,
+            "fps": fps,
+            "duration": duration,
             "num_frames": num_frames,
-            "idx":        state.idx,
-            "total":      len(state.clips),
-            "events":     state.load_events(),
+            "idx": state.idx,
+            "total": len(state.clips),
+            "events": state.load_events(),
         }
 
     # ── Current clip info + events ────────────────────────────────────────────
@@ -193,14 +210,14 @@ def make_app(clips: list[tuple[str, Path]], output_path: Path) -> FastAPI:
     def info():
         fps, duration, num_frames = state.meta()
         return {
-            "name":       state.name,
-            "fps":        fps,
-            "duration":   duration,
+            "name": state.name,
+            "fps": fps,
+            "duration": duration,
             "num_frames": num_frames,
-            "idx":        state.idx,
-            "total":      len(state.clips),
-            "classes":    CLASSES,
-            "events":     state.load_events(),
+            "idx": state.idx,
+            "total": len(state.clips),
+            "classes": CLASSES,
+            "events": state.load_events(),
         }
 
     # ── Video streaming (range request support required for seeking) ──────────
@@ -208,11 +225,11 @@ def make_app(clips: list[tuple[str, Path]], output_path: Path) -> FastAPI:
     @app.get("/video")
     async def stream_video(request: Request):
         video_path = state.path
-        file_size  = video_path.stat().st_size
-        range_hdr  = request.headers.get("Range")
+        file_size = video_path.stat().st_size
+        range_hdr = request.headers.get("Range")
 
         if range_hdr:
-            m     = re.search(r"(\d+)-(\d*)", range_hdr)
+            m = re.search(r"(\d+)-(\d*)", range_hdr)
             byte1 = int(m.group(1))
             byte2 = int(m.group(2)) if m.group(2) else file_size - 1
             length = byte2 - byte1 + 1
@@ -229,16 +246,19 @@ def make_app(clips: list[tuple[str, Path]], output_path: Path) -> FastAPI:
                         yield chunk
 
             return StreamingResponse(
-                _stream(), status_code=206, media_type="video/mp4",
+                _stream(),
+                status_code=206,
+                media_type="video/mp4",
                 headers={
-                    "Content-Range":  f"bytes {byte1}-{byte2}/{file_size}",
-                    "Accept-Ranges":  "bytes",
+                    "Content-Range": f"bytes {byte1}-{byte2}/{file_size}",
+                    "Accept-Ranges": "bytes",
                     "Content-Length": str(length),
                 },
             )
 
         return StreamingResponse(
-            open(video_path, "rb"), media_type="video/mp4",
+            open(video_path, "rb"),
+            media_type="video/mp4",
             headers={"Accept-Ranges": "bytes", "Content-Length": str(file_size)},
         )
 
@@ -246,8 +266,8 @@ def make_app(clips: list[tuple[str, Path]], output_path: Path) -> FastAPI:
 
     @app.post("/save")
     async def save(request: Request):
-        body   = await request.json()
-        name   = body.get("name", state.name)
+        body = await request.json()
+        name = body.get("name", state.name)
         events = body.get("events", [])
         state.save_events(name, events)
         return {"saved": str(output_path), "num_events": len(events), "name": name}
@@ -261,6 +281,7 @@ def make_app(clips: list[tuple[str, Path]], output_path: Path) -> FastAPI:
 
 
 # ── HTML/JS UI ────────────────────────────────────────────────────────────────
+
 
 def _build_page(multi_clip: bool) -> str:
     clips_panel_display = "flex" if multi_clip else "none"
@@ -681,6 +702,7 @@ document.addEventListener('keydown', e => {{
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
+
 
 def main() -> None:
     args = parse_args()

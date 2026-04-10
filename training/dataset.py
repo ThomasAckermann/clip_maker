@@ -43,15 +43,16 @@ from PIL import Image
 CLASSES: list[str] = ["background", "block", "receive", "score", "serve", "set", "spike"]
 CLASS_TO_IDX: dict[str, int] = {c: i for i, c in enumerate(CLASSES)}
 
-CLIP_LEN = 16           # frames fed to VideoMAE
-FRAME_SIZE = 224        # VideoMAE expects 224×224 RGB
+CLIP_LEN = 16  # frames fed to VideoMAE
+FRAME_SIZE = 224  # VideoMAE expects 224×224 RGB
 
 # ImageNet statistics (VideoMAE was pre-trained with these)
 _MEAN = [0.485, 0.456, 0.406]
-_STD  = [0.229, 0.224, 0.225]
+_STD = [0.229, 0.224, 0.225]
 
 
 # ── Transforms ───────────────────────────────────────────────────────────────
+
 
 def _build_transforms(augment: bool) -> transforms.Compose:
     """
@@ -74,6 +75,7 @@ def _build_transforms(augment: bool) -> transforms.Compose:
 
 
 # ── Dataset ──────────────────────────────────────────────────────────────────
+
 
 class VNLDataset(Dataset):
     """
@@ -137,7 +139,9 @@ class VNLDataset(Dataset):
             if bg_candidates:
                 chosen = rng.choices(bg_candidates, k=n_bg)
                 for center in chosen:
-                    self.samples.append((rally_path, center, num_frames, CLASS_TO_IDX["background"]))
+                    self.samples.append(
+                        (rally_path, center, num_frames, CLASS_TO_IDX["background"])
+                    )
 
         # Flatten the 4-tuple to match __getitem__ expectations
         # (rally_path, center_frame, num_frames, label_idx)
@@ -165,6 +169,7 @@ class VNLDataset(Dataset):
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
+
 def _background_candidates(
     num_frames: int,
     event_frames: list[int],
@@ -183,14 +188,12 @@ def _background_candidates(
         for f in range(ef - margin, ef + margin + 1):
             excluded.add(f)
 
-    candidates = [
-        f for f in range(half, num_frames - half)
-        if f not in excluded
-    ]
+    candidates = [f for f in range(half, num_frames - half) if f not in excluded]
     return candidates
 
 
 # ── Class-weight helper ───────────────────────────────────────────────────────
+
 
 def class_weights(dataset: VNLDataset) -> torch.Tensor:
     """

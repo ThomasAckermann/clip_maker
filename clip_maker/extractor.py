@@ -89,16 +89,12 @@ def extract_clips(
         )
 
     manifest_path = output_dir / "manifest.json"
-    manifest_path.write_text(
-        json.dumps([asdict(c) for c in clips], indent=2), encoding="utf-8"
-    )
+    manifest_path.write_text(json.dumps([asdict(c) for c in clips], indent=2), encoding="utf-8")
 
     return clips
 
 
-def _ffmpeg_extract(
-    src: Path, dst: Path, start_sec: float, duration_sec: float
-) -> None:
+def _ffmpeg_extract(src: Path, dst: Path, start_sec: float, duration_sec: float) -> None:
     """
     Use FFmpeg stream-copy to cut a clip without re-encoding.
 
@@ -108,20 +104,24 @@ def _ffmpeg_extract(
     """
     cmd = [
         "ffmpeg",
-        "-y",                        # overwrite without prompt
-        "-ss", f"{start_sec:.3f}",   # fast seek (before input)
-        "-i", str(src),
-        "-t", f"{duration_sec:.3f}",
-        "-c", "copy",                # stream copy — no re-encode
-        "-avoid_negative_ts", "1",
-        "-movflags", "+faststart",
+        "-y",  # overwrite without prompt
+        "-ss",
+        f"{start_sec:.3f}",  # fast seek (before input)
+        "-i",
+        str(src),
+        "-t",
+        f"{duration_sec:.3f}",
+        "-c",
+        "copy",  # stream copy — no re-encode
+        "-avoid_negative_ts",
+        "1",
+        "-movflags",
+        "+faststart",
         str(dst),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        raise RuntimeError(
-            f"FFmpeg failed for {dst.name}:\n{result.stderr[-2000:]}"
-        )
+        raise RuntimeError(f"FFmpeg failed for {dst.name}:\n{result.stderr[-2000:]}")
 
 
 def get_video_info(video_path: Path) -> tuple[float, float]:
@@ -130,8 +130,10 @@ def get_video_info(video_path: Path) -> tuple[float, float]:
     """
     cmd = [
         "ffprobe",
-        "-v", "quiet",
-        "-print_format", "json",
+        "-v",
+        "quiet",
+        "-print_format",
+        "json",
         "-show_streams",
         str(video_path),
     ]
