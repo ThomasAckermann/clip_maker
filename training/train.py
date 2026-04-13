@@ -7,12 +7,21 @@ Usage (from repo root):
       --output-dir models/videomae-vnl \\
       [--epochs 10] [--batch-size 8] [--lr 1e-4] [--num-workers 4]
 
+  # Mixed validation: add club-footage splits alongside the VNL val set
+  python -m training.train \\
+      --data-dir data \\
+      --val-extra-json data/club/val.json data/club2/val.json \\
+      --val-extra-frames data/club/frames_224p data/club2/frames_224p \\
+      --output-dir models/videomae-vnl
+
 The script:
   1. Loads train/val splits from dataset.py
-  2. Downloads MCG-NJU/videomae-small from HuggingFace (cached after first run)
-  3. Replaces the classification head with a 7-class head
-  4. Fine-tunes with cross-entropy loss + inverse-frequency class weights
-  5. Saves the best checkpoint (by val accuracy) to --output-dir
+  2. Optionally merges additional val JSON files (e.g. club footage) via --val-extra-json
+  3. Downloads MCG-NJU/videomae-small from HuggingFace (cached after first run)
+  4. Replaces the classification head with a 7-class head
+  5. Fine-tunes with cross-entropy loss + inverse-frequency class weights
+  6. Saves the best checkpoint (by val accuracy) to --output-dir
+  7. Logs loss / accuracy / LR to TensorBoard (default: runs/<output-dir-name>)
 
 Hardware: designed for an RTX 3070 (8 GB VRAM).
   - With batch_size=8 and gradient checkpointing, VRAM usage ≈ 5–6 GB.
@@ -27,7 +36,7 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 from transformers import VideoMAEForVideoClassification
 
 from .dataset import VNLDataset, class_weights, CLASSES
@@ -89,6 +98,37 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="After training, merge adapter weights into base model and save "
         "a standalone checkpoint (no PEFT needed at inference).",
+    )
+    # Mixed validation
+    p.add_argument(
+        "--val-extra-json",
+        type=Path,
+        nargs="+",
+        default=[],
+        metavar="JSON",
+        help="Additional val JSON files (e.g. club footage labels.json). "
+        "Must be paired 1-to-1 with --val-extra-frames.",
+    )
+    p.add_argument(
+        "--val-extra-frames",
+        type=Path,
+        nargs="+",
+        default=[],
+        metavar="FRAMES_ROOT",
+        help="frames_224p roots corresponding to each --val-extra-json file.",
+    )
+    # TensorBoard
+    p.add_argument(
+        "--no-tensorboard",
+        action="store_true",
+        help="Disable TensorBoard logging (enabled by default).",
+    )
+    p.add_argument(
+        "--tensorboard-dir",
+        type=Path,
+        default=None,
+        help="Directory for TensorBoard event files "
+        "(default: runs/<output-dir-name>).",
     )
     return p.parse_args()
 
@@ -301,6 +341,12 @@ def main() -> None:
     args = parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
+    if len(args.val_extra_json) != len(args.val_extra_frames):
+        raise SystemExit(
+            f"--val-extra-json ({len(args.val_extra_json)} files) and "
+            f"--val-extra-frames ({len(args.val_extra_frames)} roots) must have the same length."
+        )
+
     if torch.cuda.is_available():
         device = torch.device("cuda")
     elif torch.backends.mps.is_available():
@@ -318,10 +364,41 @@ def main() -> None:
             f"  This keeps the effective batch size the same but fits in MPS memory."
         )
 
+    # ── TensorBoard ──────────────────────────────────────────────────────────
+    tb_writer = None
+    if not args.no_tensorboard:
+        try:
+            from torch.utils.tensorboard import SummaryWriter
+
+            tb_dir = args.tensorboard_dir or Path("runs") / args.output_dir.name
+            tb_writer = SummaryWriter(log_dir=str(tb_dir))
+            print(f"TensorBoard: tensorboard --logdir {tb_dir}")
+        except ImportError:
+            print(
+                "WARNING: tensorboard not installed — skipping TensorBoard logging.\n"
+                "  Install it with: pip install 'clip-maker[train]' or pip install tensorboard"
+            )
+
     # ── Datasets & loaders ───────────────────────────────────────────────────
     frames_root = args.data_dir / "frames_224p"
     train_ds = VNLDataset(args.data_dir / "train.json", frames_root, augment=True)
-    val_ds = VNLDataset(args.data_dir / "val.json", frames_root, augment=False)
+    vnl_val_ds = VNLDataset(args.data_dir / "val.json", frames_root, augment=False)
+
+    extra_val_datasets = [
+        VNLDataset(json_path, extra_frames_root, augment=False)
+        for json_path, extra_frames_root in zip(args.val_extra_json, args.val_extra_frames)
+    ]
+    val_ds = ConcatDataset([vnl_val_ds, *extra_val_datasets]) if extra_val_datasets else vnl_val_ds
+
+    if extra_val_datasets:
+        print(
+            f"Val sources: VNL ({len(vnl_val_ds)}) + "
+            + " + ".join(
+                f"{p.parent.name} ({len(ds)})"
+                for p, ds in zip(args.val_extra_json, extra_val_datasets)
+            )
+            + f" = {len(val_ds)} total"
+        )
 
     train_loader = DataLoader(
         train_ds,
@@ -396,6 +473,13 @@ def main() -> None:
             f"val loss {val_loss:.4f} acc {val_acc:.3f}{flag}"
         )
 
+        if tb_writer is not None:
+            tb_writer.add_scalar("Loss/train", train_loss, epoch)
+            tb_writer.add_scalar("Loss/val", val_loss, epoch)
+            tb_writer.add_scalar("Accuracy/train", train_acc, epoch)
+            tb_writer.add_scalar("Accuracy/val", val_acc, epoch)
+            tb_writer.add_scalar("LearningRate", scheduler.get_last_lr()[0], epoch)
+
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             save_checkpoint(model, args.output_dir / "best", args)
@@ -405,6 +489,9 @@ def main() -> None:
     save_checkpoint(model, args.output_dir / "final", args)
     with open(args.output_dir / "history.json", "w") as f:
         json.dump(history, f, indent=2)
+
+    if tb_writer is not None:
+        tb_writer.close()
 
     print(f"\nDone. Best val accuracy: {best_val_acc:.3f}")
     print(f"Checkpoints saved to: {args.output_dir}")
