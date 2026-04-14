@@ -31,6 +31,10 @@ class ClipInfo:
     start_frame: int
     end_frame: int
     actions: list[dict] = field(default_factory=list)
+    # Per-track summary for every player detected in this clip.
+    # Populated by the player tracking step (optional).
+    # Each entry: {track_id, num_frames, duration_sec, bbox_samples}
+    player_tracks: list[dict] = field(default_factory=list)
 
 
 def extract_clips(

@@ -18,6 +18,8 @@ Model download:
 from __future__ import annotations
 
 import hashlib
+import queue
+import threading
 import urllib.request
 from collections import deque
 from dataclasses import dataclass
@@ -91,9 +93,14 @@ def download_model(
 
 
 def _build_session(model_path: Path, use_gpu: bool) -> ort.InferenceSession:
+    available = ort.get_available_providers()
     providers: list[str] = []
     if use_gpu:
         providers.append("CUDAExecutionProvider")
+    # On macOS/Apple Silicon, CoreML routes inference through ANE or Metal.
+    # It's included in the standard onnxruntime wheel — no extra install needed.
+    if "CoreMLExecutionProvider" in available:
+        providers.append("CoreMLExecutionProvider")
     providers.append("CPUExecutionProvider")
     return ort.InferenceSession(str(model_path), providers=providers)
 
@@ -146,14 +153,29 @@ class BallTracker:
         model_path: Path,
         heatmap_threshold: float = 0.5,
         use_gpu: bool = False,
+        stride: int = 1,
     ) -> None:
         self._session = _build_session(model_path, use_gpu)
         self._input_name = self._session.get_inputs()[0].name
         self._threshold = heatmap_threshold
+        if stride < 1:
+            raise ValueError(f"stride must be >= 1, got {stride}")
+        self._stride = stride
 
     def track(self, video_path: Path) -> Generator[Detection | None, None, None]:
         """
         Yields Detection | None for every frame in the video.
+
+        With stride > 1, ONNX inference runs only on every Nth frame; skipped
+        frames yield None.  The frame buffer is still filled with every frame so
+        the model always sees real consecutive frames when it does run.  Because
+        rally gaps are ~1.5 s (≈ 45 frames at 30 fps), a stride of 2–4 has no
+        meaningful effect on segmentation quality.
+
+        Frame decoding (H.264 decompress + grayscale + resize + normalise) runs
+        in a background thread so it overlaps with ONNX inference on the main
+        thread instead of blocking it.
+
         Caller is responsible for progress display if desired.
         """
         cap = cv2.VideoCapture(str(video_path))
@@ -163,20 +185,46 @@ class BallTracker:
         orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
+        # Queue holds preprocessed frames (np.ndarray) or None as a sentinel.
+        # Depth of 32 keeps the decoder from racing too far ahead while bounding
+        # peak memory (~32 × 288 × 512 × 4 bytes ≈ 18 MB).
+        _QUEUE_DEPTH = 32
+        _SENTINEL = object()
+        frame_q: queue.Queue = queue.Queue(maxsize=_QUEUE_DEPTH)
+
+        def _decode_worker() -> None:
+            try:
+                while True:
+                    ok, bgr = cap.read()
+                    if not ok:
+                        break
+                    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+                    resized = cv2.resize(gray, (MODEL_W, MODEL_H))
+                    normalised = resized.astype(np.float32) / 255.0
+                    frame_q.put(normalised)
+            finally:
+                frame_q.put(_SENTINEL)
+
+        decoder = threading.Thread(target=_decode_worker, daemon=True)
+        decoder.start()
+
         # Fixed-size circular buffer — only keeps the last SEQ_LEN frames.
         frame_buffer: deque[np.ndarray] = deque(maxlen=SEQ_LEN)
         frame_idx = 0
 
         try:
             while True:
-                ok, bgr = cap.read()
-                if not ok:
+                item = frame_q.get()
+                if item is _SENTINEL:
                     break
 
-                gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-                resized = cv2.resize(gray, (MODEL_W, MODEL_H))
-                normalised = resized.astype(np.float32) / 255.0
-                frame_buffer.append(normalised)
+                frame_buffer.append(item)
+
+                if frame_idx % self._stride != 0:
+                    # Skipped frame — maintain buffer, skip inference.
+                    yield None
+                    frame_idx += 1
+                    continue
 
                 # Pad with the first frame until buffer is full
                 if len(frame_buffer) < SEQ_LEN:
@@ -192,4 +240,11 @@ class BallTracker:
                 yield _heatmap_to_detection(heatmap, frame_idx, orig_w, orig_h, self._threshold)
                 frame_idx += 1
         finally:
+            # Drain the queue so the decoder thread isn't blocked on a full put().
+            while not frame_q.empty():
+                try:
+                    frame_q.get_nowait()
+                except queue.Empty:
+                    break
             cap.release()
+            decoder.join()
